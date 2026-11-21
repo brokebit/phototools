@@ -45,11 +45,12 @@ body {
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-block: 28px 48px;
 }
+a { color: var(--accent-ink); }
 .wrap { max-width: 1160px; margin: 0 auto; display: grid; gap: 20px; }
 
 header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; }
 h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(26px, 4vw, 36px); line-height: 1.1; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
-.sub { color: var(--muted); margin: 4px 0 0; max-width: 60ch; }
+.sub { color: var(--muted); margin: 4px 0 0; max-width: 68ch; }
 
 .seg { display: inline-flex; background: var(--chip); border-radius: 8px; padding: 3px; gap: 2px; }
 .seg button { border: 0; background: transparent; color: var(--muted); font: 500 13px var(--font-body); padding: 6px 12px; border-radius: 6px; cursor: pointer; }
@@ -148,7 +149,7 @@ svg .mono { font-family: var(--font-mono); }
   <header>
     <div>
       <h1>Portrait Focus Planner</h1>
-      <p class="sub">Pick your sensor, lens and aperture, then move the camera to see how deep the zone of sharp focus is around your subject.</p>
+      <p class="sub">Pick your sensor, lens and aperture, then move the camera to see how deep the zone of sharp focus is around your subject. Companion to the <a href="compression.html">Lens Compression Simulator</a> and the <a href="compression-portrait.html">Portrait Compression Simulator</a>.</p>
     </div>
     <div class="seg" role="group" aria-label="Units">
       <button type="button" id="u-m" aria-pressed="true">Metric</button>
