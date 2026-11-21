@@ -1,0 +1,1016 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portrait Compression Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: controls strip, then the rendered face beside a top-view diagram, a lens-comparison strip, then numbers + chart */
+:root {
+  --bg: #eceff1;
+  --panel: #fbfcfc;
+  --ink: #17212b;
+  --muted: #5a6975;
+  --line: #c8d1d8;
+  --grid: #dde3e7;
+  --accent: #c97c00;      /* nose, and what the frame takes in */
+  --accent-ink: #8a5400;
+  --ear: #2f74a8;         /* ears */
+  --ear-ink: #1f5680;
+  --cone: rgba(23, 33, 43, .07);
+  --chip: #e2e7ea;
+  --font-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  --font-body: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11171c; --panel: #182128; --ink: #e5ebef; --muted: #91a1ad; --line: #2d3b46; --grid: #222d35;
+    --accent: #f0a63a; --accent-ink: #f6c27a; --ear: #6fb2e6; --ear-ink: #9ccbf0; --cone: rgba(229, 235, 239, .06);
+    --chip: #23303a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11171c; --panel: #182128; --ink: #e5ebef; --muted: #91a1ad; --line: #2d3b46; --grid: #222d35;
+  --accent: #f0a63a; --accent-ink: #f6c27a; --ear: #6fb2e6; --ear-ink: #9ccbf0; --cone: rgba(229, 235, 239, .06);
+  --chip: #23303a; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+}
+a { color: var(--accent-ink); }
+.wrap { max-width: 1160px; margin: 0 auto; display: grid; gap: 20px; }
+
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(26px, 4vw, 36px); line-height: 1.1; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+.sub { color: var(--muted); margin: 4px 0 0; max-width: 72ch; }
+
+.seg { display: inline-flex; background: var(--chip); border-radius: 8px; padding: 3px; gap: 2px; justify-self: start; }
+.seg button { border: 0; background: transparent; color: var(--muted); font: 500 13px var(--font-body); padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+.panel h2 { font-family: var(--font-display); font-weight: 500; font-size: 18px; margin: 0; }
+
+.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px 24px; padding: 18px 20px; }
+.field { display: grid; gap: 6px; min-width: 0; align-content: start; }
+.field > label, .label { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+select, input[type="number"] {
+  width: 100%; font: 500 15px var(--font-body); color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+}
+.inline { display: flex; align-items: center; gap: 8px; }
+.inline .unit { font-family: var(--font-mono); color: var(--muted); font-size: 14px; }
+.inline input { font-family: var(--font-mono); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { border: 1px solid var(--line); background: transparent; color: var(--ink); font: 500 12px var(--font-mono); padding: 3px 8px; border-radius: 999px; cursor: pointer; }
+.chips button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.hint { font-size: 12px; color: var(--muted); }
+.check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.check input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* rendered face + top view */
+.work { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .work { grid-template-columns: minmax(0, 1fr); } }
+.vf { padding: 16px 18px 18px; display: grid; gap: 10px; justify-items: start; align-content: start; min-width: 0; }
+.preview { position: relative; overflow: hidden; border-radius: 6px; background: #33373c; max-width: 100%; box-shadow: 0 0 0 1px var(--line); }
+.preview.portrait { width: 320px; }
+.preview.landscape { width: 420px; }
+.preview canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.gl-msg { position: absolute; inset: 0; margin: 0; padding: 20px; display: grid; place-items: center; text-align: center; color: #e5ebef; font-size: 13px; }
+.pv-cap { font-size: 12px; color: var(--muted); max-width: 320px; margin: 0; }
+
+.stage { padding: 14px 14px 18px; display: grid; gap: 12px; min-width: 0; }
+.stage-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; padding: 0 6px; align-items: baseline; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 10px; border-radius: 2px; display: inline-block; }
+.sw.ln { height: 0; border-top: 2px solid; border-radius: 0; }
+.svgbox { overflow-x: auto; }
+svg { display: block; width: 100%; height: auto; }
+#main { min-width: 560px; touch-action: none; user-select: none; -webkit-user-select: none; }
+#main .cam { cursor: grab; }
+#main.dragging .cam { cursor: grabbing; }
+#main .fmark { cursor: pointer; }
+
+.rail { display: grid; grid-template-columns: auto 1fr auto; gap: 10px 14px; align-items: center; padding: 0 6px; }
+.rail input[type="range"] { width: 100%; accent-color: var(--accent); }
+.rail .inline input { width: 96px; }
+@media (max-width: 640px) { .rail { grid-template-columns: 1fr; } }
+
+/* lens strip */
+.strip-panel { padding: 16px 18px 18px; display: grid; gap: 12px; }
+.strip-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; align-items: baseline; }
+.strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(108px, 1fr)); gap: 14px 12px; }
+.thumb { border: 0; background: none; padding: 0; cursor: pointer; display: grid; gap: 5px; text-align: left; color: var(--ink); font: inherit; min-width: 0; align-content: start; }
+.thumb .tpv { border-radius: 6px; overflow: hidden; box-shadow: 0 0 0 1px var(--line); background: #33373c; }
+.thumb .tpv canvas { display: block; width: 100%; height: auto; }
+.thumb.on .tpv { box-shadow: 0 0 0 3px var(--accent); }
+.thumb b { font: 500 13px var(--font-mono); display: block; }
+.thumb span { font-size: 12px; color: var(--muted); display: block; font-variant-numeric: tabular-nums; }
+
+/* numbers */
+.lower { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: 20px; align-items: start; }
+@media (max-width: 860px) { .lower { grid-template-columns: minmax(0, 1fr); } }
+.card { padding: 16px 18px 18px; display: grid; gap: 14px; min-width: 0; }
+.headline { font-family: var(--font-display); font-size: 22px; font-weight: 700; line-height: 1.2; margin: 0; text-wrap: balance; }
+.headline em { font-style: normal; color: var(--accent-ink); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.stat { background: var(--bg); border-radius: 8px; padding: 8px 12px; display: grid; gap: 2px; align-content: start; }
+.stat b { font-family: var(--font-mono); font-size: 18px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 12px; color: var(--muted); }
+#curve { touch-action: none; }
+
+dl.rows { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+dl.rows dt, dl.rows dd { padding: 7px 0; border-top: 1px solid var(--grid); margin: 0; }
+dl.rows dt { color: var(--muted); }
+dl.rows dd { font-family: var(--font-mono); font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; padding-left: 12px; }
+dl.rows .grp { grid-column: 1 / -1; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 14px 0 4px; border-top: 0; }
+dl.rows .grp:first-child { padding-top: 0; }
+
+textarea { width: 100%; min-height: 220px; resize: vertical; font: 13px/1.5 var(--font-mono); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+.copyrow { display: flex; gap: 10px; align-items: center; }
+.btn { border: 1px solid var(--ink); background: var(--ink); color: var(--panel); font: 600 13px var(--font-body); padding: 7px 14px; border-radius: 8px; cursor: pointer; }
+.note { font-size: 12px; color: var(--muted); margin: 0; max-width: 70ch; }
+
+svg text { font-family: var(--font-body); }
+svg .mono { font-family: var(--font-mono); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Portrait Compression Simulator</h1>
+      <p class="sub">See how camera distance and focal length reshape a face: how large the nose is drawn, how much of the ears show, and how wide the head looks. Companion to the <a href="compression.html">Lens Compression Simulator</a> and the <a href="dof.html">Portrait Focus Planner</a>.</p>
+    </div>
+    <div class="seg" role="group" aria-label="Units">
+      <button type="button" id="u-m" aria-pressed="true">Metric</button>
+      <button type="button" id="u-ft" aria-pressed="false">Imperial</button>
+    </div>
+  </header>
+
+  <section class="panel controls" aria-label="Camera settings">
+    <div class="field">
+      <label for="sensor">Sensor size</label>
+      <select id="sensor"></select>
+      <span class="hint" id="sensor-hint"></span>
+    </div>
+    <div class="field">
+      <label for="focal">Focal length</label>
+      <div class="inline"><input id="focal" type="number" min="8" max="800" step="1" value="85"><span class="unit">mm</span></div>
+      <div class="chips" id="focal-chips"></div>
+    </div>
+    <div class="field">
+      <span class="label">When the focal length changes</span>
+      <div class="seg" role="group" aria-label="When the focal length changes">
+        <button type="button" id="l-f" aria-pressed="true">Keep framing</button>
+        <button type="button" id="l-p" aria-pressed="false">Keep position</button>
+      </div>
+      <span class="hint" id="lock-hint"></span>
+    </div>
+    <div class="field">
+      <span class="label">Orientation &amp; display</span>
+      <div class="seg" role="group" aria-label="Orientation">
+        <button type="button" id="o-p" aria-pressed="true">Portrait</button>
+        <button type="button" id="o-l" aria-pressed="false">Landscape</button>
+      </div>
+      <label class="check"><input type="checkbox" id="tint" checked>Tint the nose and ears</label>
+    </div>
+  </section>
+
+  <div class="work">
+    <section class="panel vf" aria-label="Rendered portrait">
+      <h2>What the camera sees</h2>
+      <div class="preview portrait" id="preview">
+        <canvas id="vf" role="img" aria-label="Rendered head as seen from the chosen distance and focal length"></canvas>
+        <p class="gl-msg" id="gl-msg" hidden></p>
+      </div>
+      <p class="pv-cap" id="pv-cap"></p>
+    </section>
+
+    <section class="panel stage" aria-label="Top view diagram">
+      <div class="stage-head">
+        <h2>Top view</h2>
+        <div class="legend">
+          <span><i class="sw" style="background:var(--cone);border:1px solid var(--line)"></i>Field of view</span>
+          <span><i class="sw ln" style="border-color:var(--accent)"></i>Line of sight to the nose tip</span>
+          <span><i class="sw ln" style="border-color:var(--ear)"></i>To the ears</span>
+          <span id="legend-marks"></span>
+        </div>
+      </div>
+      <div class="svgbox"><svg id="main" viewBox="0 0 1000 380" role="img" aria-label="Camera and head seen from above, drawn to scale, with lines of sight to the nose tip and the ears"></svg></div>
+      <div class="rail">
+        <label class="label" for="dist">Camera to eyes</label>
+        <input id="dist" type="range" min="0" max="1000" step="1">
+        <div class="inline"><input id="dist-num" type="number" step="any" aria-label="Camera to eyes distance"><span class="unit" id="dist-unit">cm</span></div>
+        <label class="label" for="yaw">Head turn</label>
+        <input id="yaw" type="range" min="0" max="90" step="1">
+        <div class="inline"><input id="yaw-num" type="number" min="0" max="90" step="1" aria-label="Head turn in degrees"><span class="unit">°</span></div>
+      </div>
+      <p class="note" style="padding:0 6px">Drag the camera in the diagram, or use the sliders. A dashed line of sight means that ear is hidden behind the cheek. The diagram rescales to keep the camera in view.</p>
+    </section>
+  </div>
+
+  <section class="panel strip-panel" aria-label="Lens comparison">
+    <div class="strip-head">
+      <h2 id="strip-title"></h2>
+      <span class="hint">Select a frame to switch to that lens</span>
+    </div>
+    <div class="strip" id="strip"></div>
+    <p class="note" id="strip-note"></p>
+  </section>
+
+  <div class="lower">
+    <section class="panel card" aria-label="Perspective">
+      <p class="headline" id="headline"></p>
+      <div class="stats" id="stats"></div>
+      <div>
+        <div class="label" style="margin-bottom:4px">Size of the nose tip and ears relative to the eyes, by camera distance</div>
+        <div class="svgbox"><svg id="curve" viewBox="0 0 560 226" role="img" aria-label="How large the nose tip and ears are drawn relative to the eyes, against camera distance"></svg></div>
+      </div>
+      <p class="note">The lens does not reshape a face; the distance does. Up close, the nose is much nearer the camera than the ears, so it is drawn larger and the cheeks cover the ears. From farther back those distances even out and the face flattens. Focal length only decides how much of that view fills the frame.</p>
+    </section>
+
+    <section class="panel card" aria-label="Calculations">
+      <dl class="rows" id="rows"></dl>
+      <details>
+        <summary class="label" style="cursor:pointer">Plain-text summary</summary>
+        <div style="display:grid;gap:8px;margin-top:10px">
+          <textarea id="summary" readonly aria-label="Plain-text summary"></textarea>
+          <div class="copyrow"><button class="btn" type="button" id="copy">Copy summary</button><span class="hint" id="copy-msg"></span></div>
+        </div>
+      </details>
+      <p class="note">Distances are measured from the camera's sensor plane to the eyes, with the camera at eye level. The head is a mannequin with average adult proportions; real faces vary, so read the numbers as a guide. "Ears showing" and "apparent head width" are measured from the rendered image.</p>
+    </section>
+  </div>
+</div>
+
+<script>
+(() => {
+  const SENSORS = [
+    { name: "Full frame (35mm)", w: 36, h: 24 },
+    { name: "APS-H (Canon)", w: 27.9, h: 18.6 },
+    { name: "APS-C (Sony, Nikon, Fujifilm)", w: 23.5, h: 15.6 },
+    { name: "APS-C (Canon)", w: 22.3, h: 14.9 },
+    { name: "Micro Four Thirds", w: 17.3, h: 13.0 },
+    { name: "1-inch type", w: 13.2, h: 8.8 },
+    { name: "Medium format 44×33 (GFX, Hasselblad X)", w: 43.8, h: 32.9 },
+    { name: "Medium format 645 (53.4×40)", w: 53.4, h: 40 },
+    { name: "6×7 film", w: 70, h: 56 },
+    { name: "4×5 large format", w: 120, h: 96 },
+  ];
+  const FF_DIAG = Math.hypot(36, 24);
+  const FOCALS = [16, 24, 35, 50, 85, 135, 200, 400];
+  const FT = 0.3048, RAD = Math.PI / 180;
+  const D_MIN = 0.15, D_MAX = 6;
+
+  // Head landmarks in centimetres, [x, z] seen from above: x toward the subject's side, z toward the face.
+  // The origin is the head's vertical axis, level with the ears. The shader below builds the same head.
+  const HEAD = { eyeZ: 8.1, nose: [0, 11.05], earC: [7.3, -1.05], earOut: [8.2, -2.2], halfW: 7.6 };
+
+  const st = { sensor: 0, f: 85, d: 1.15, yaw: 0, units: "m", orient: "portrait", lock: "framing", tint: true };
+  try { const u = localStorage.getItem("dof-units"); if (u === "m" || u === "ft") st.units = u; } catch (e) {}
+  const magNow = () => st.f / (st.d * 1000 - st.f);
+  let lockMag = magNow();                 // the framing "Keep framing" holds on to
+
+  const $ = id => document.getElementById(id);
+  const svgMain = $("main");
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const clampD = (d, f) => Math.min(D_MAX, Math.max(D_MIN, 2.1 * f / 1000, d));
+
+  // ---------- formatting ----------
+  function fmtLen(m) {
+    if (!isFinite(m)) return "∞";
+    if (st.units === "m") {
+      if (m < 0.1) return (m * 100).toFixed(1) + " cm";
+      if (m < 1) return (m * 100).toFixed(0) + " cm";
+      return m.toFixed(2) + " m";
+    }
+    const inches = m / 0.0254;
+    if (inches < 12) return inches.toFixed(1) + " in";
+    let ft = Math.floor(inches / 12), rem = Math.round((inches - ft * 12) * 2) / 2;
+    if (rem >= 12) { ft += 1; rem = 0; }
+    return ft + " ft " + (rem % 1 ? rem.toFixed(1) : rem) + " in";
+  }
+  const fmtCm = cm => st.units === "m" ? +cm.toFixed(1) + " cm" : (cm / 2.54).toFixed(1) + " in";
+  const relTxt = v => { const p = (v - 1) * 100, a = Math.abs(p); return (p >= 0 ? "+" : "−") + a.toFixed(a < 10 ? 1 : 0) + "%"; };
+  const pctTxt = v => Math.round(v * 100) + "%";
+  const esc = s => String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  function niceStep(x) {
+    const p = Math.pow(10, Math.floor(Math.log10(x))), n = x / p;
+    return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * p;
+  }
+  const SERIES = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+  function niceCeil(x) {
+    const p = Math.pow(10, Math.floor(Math.log10(x))), n = x / p;
+    return SERIES.find(v => v >= n - 1e-9) * p;
+  }
+
+  // ---------- optics ----------
+  // One photograph: focal length f (mm) from d metres, focused on the eyes.
+  function shot(f, d) {
+    const S = SENSORS[st.sensor];
+    const long = Math.max(S.w, S.h), short = Math.min(S.w, S.h);
+    const vert = st.orient === "portrait" ? long : short;
+    const horiz = st.orient === "portrait" ? short : long;
+    const s = d * 1000, mag = f / (s - f);
+    const P = f * s / (s - f);                       // lens-to-sensor distance, mm: the projection scale
+    const frameV = vert / mag / 1000, frameH = horiz / mag / 1000;
+    // height (cm, relative to eye level) that lands mid-frame: the face for a tight crop, lower as the frame widens
+    const fv = frameV * 100;
+    const aim = fv <= 24 ? -1.5 : fv <= 45 ? -1.5 - (fv - 24) * 0.2143 : -6 - (fv - 45) * 0.3;
+    return { S, f, d, vert, horiz, mag, P, frameV, frameH, aim };
+  }
+  // How large each feature is drawn relative to the eyes, for a camera dcm centimetres from the eye plane.
+  function persp(dcm, yawDeg) {
+    const c = Math.cos(yawDeg * RAD), s = Math.sin(yawDeg * RAD);
+    const depth = ([x, z]) => -x * s + z * c;        // toward the camera
+    const cam = HEAD.eyeZ + dcm, eyes = HEAD.eyeZ * c;
+    const rel = p => (cam - eyes) / (cam - depth(p));
+    const earA = rel([-HEAD.earC[0], HEAD.earC[1]]), earB = rel(HEAD.earC);
+    return { nose: rel(HEAD.nose), earA, earB, near: Math.max(earA, earB), far: Math.min(earA, earB) };
+  }
+  function compute() {
+    const r = shot(st.f, st.d);
+    const diag = Math.hypot(r.S.w, r.S.h), crop = FF_DIAG / diag;
+    const distAt = F => F * (1 + 1 / r.mag) / 1000;  // where you would stand with focal length F for this framing
+    return Object.assign(r, {
+      diag, crop, distAt, p: persp(st.d * 100, st.yaw),
+      fovV: 2 * Math.atan(r.vert / (2 * st.f)) / RAD,
+      fovH: 2 * Math.atan(r.horiz / (2 * st.f)) / RAD,
+      headAngle: 2 * Math.atan(HEAD.halfW / (st.d * 100 + HEAD.eyeZ)) / RAD,
+    });
+  }
+  function framing(v) {
+    if (v < 0.3) return "Extreme close-up";
+    if (v < 0.5) return "Tight headshot";
+    if (v < 0.75) return "Head and shoulders";
+    if (v < 1.1) return "Chest up";
+    if (v < 1.5) return "Half body (waist up)";
+    if (v < 2.1) return "Three-quarter (knees up)";
+    if (v < 3) return "Full body";
+    return "Full body with surroundings";
+  }
+
+  // ---------- the head, drawn on the GPU ----------
+  // The head is a distance field (a few blended ellipsoids, in centimetres) traced per pixel from the camera,
+  // so the picture is a true perspective view rather than a warped drawing.
+  const FRAG = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform vec2 uRes;      // viewport size, px
+uniform vec2 uTan;      // half the frame, as tangents of the half angles
+uniform vec2 uYaw;      // cos, sin of the head turn
+uniform float uShift;   // tangent of the vertical aim offset
+uniform float uDist;    // camera to eye plane, cm
+uniform float uTint;    // 1 = colour the nose and ears
+uniform float uTopR;    // half-size of the top view, cm
+uniform int uMode;      // 0 photo, 1 measurement mask, 2 top view
+const float EYE_Z = ${HEAD.eyeZ.toFixed(2)};
+
+float smin(float a, float b, float k) { float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0); return mix(b, a, h) - k * h * (1.0 - h); }
+float smax(float a, float b, float k) { return -smin(-a, -b, k); }
+float sdEll(vec3 p, vec3 r) { float k0 = length(p / r); float k1 = length(p / (r * r)); return k0 * (k0 - 1.0) / k1; }
+float sdCap(vec3 p, vec3 a, vec3 b, float r1, float r2) {
+  vec3 pa = p - a, ba = b - a;
+  float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  return length(pa - ba * h) - mix(r1, r2, h);
+}
+vec3 toHead(vec3 w) { return vec3(w.x * uYaw.x - w.z * uYaw.y, w.y, w.x * uYaw.y + w.z * uYaw.x); }
+
+// distance to the surface, and which part it is: 0 body, 1 head, 2 nose, 3 ear, 4 lips, 5 eyeball
+vec2 map(vec3 w) {
+  vec3 p = toHead(w);
+  vec3 q = vec3(abs(p.x), p.y, p.z);
+  float m = 1.0;
+  float d = sdEll(p - vec3(0.0, 3.0, -0.5), vec3(7.6, 9.0, 9.7));                       // cranium
+  d = smin(d, sdEll(p - vec3(0.0, -5.0, 2.2), vec3(6.2, 7.5, 6.8)), 2.0);               // face and jaw
+  d = smin(d, length(q - vec3(4.6, -2.4, 5.4)) - 2.3, 2.0);                             // cheekbones
+  d = smin(d, length(p - vec3(0.0, -9.6, 6.2)) - 2.2, 1.5);                             // chin
+  d = smin(d, sdEll(q - vec3(3.0, 1.7, 8.0), vec3(2.8, 0.8, 1.2)), 1.0);                // brow
+  d = smax(d, -(length(q - vec3(3.2, -0.2, 9.6)) - 1.9), 0.8);                          // eye sockets
+  vec3 ec = vec3(3.15, 0.0, 6.9);
+  float lid = length(q - ec) - 1.34;                                                     // eyelids with an almond opening
+  lid = smax(lid, -(length((q.xy - ec.xy) / vec2(1.25, 0.46)) - 1.0) * 0.46, 0.1);
+  d = smin(d, lid, 0.4);
+
+  float lips = min(sdEll(p - vec3(0.0, -7.05, 8.55), vec3(2.3, 0.48, 0.8)), sdEll(p - vec3(0.0, -7.9, 8.4), vec3(2.0, 0.52, 0.8)));
+  if (lips < d) m = 4.0;
+  d = smin(d, lips, 0.4);
+
+  float n = sdCap(p, vec3(0.0, 0.4, 8.4), vec3(0.0, -3.9, 9.95), 0.62, 1.1);              // bridge down to the tip
+  n = smin(n, length(q - vec3(1.15, -4.6, 8.9)) - 0.8, 0.7);                            // nostril wings
+  n = smax(n, -(length(q - vec3(0.62, -5.4, 9.45)) - 0.36), 0.2);                       // nostrils
+  if (n < d) m = 2.0;
+  d = smin(d, n, 0.9);
+
+  vec3 e = q - vec3(${HEAD.earC[0].toFixed(2)}, -1.4, ${HEAD.earC[1].toFixed(2)});     // ear: a thin disc flaring out toward the back
+  vec3 el = vec3(e.x * 0.866 + e.z * 0.5, e.y, -e.x * 0.5 + e.z * 0.866);
+  el = vec3(el.x, el.y * 0.98 - el.z * 0.199, el.y * 0.199 + el.z * 0.98);
+  float ear = sdEll(el, vec3(0.5, 3.2, 1.9));
+  ear = smax(ear, -sdEll(el - vec3(0.5, -0.2, 0.2), vec3(0.5, 2.0, 1.05)), 0.25);
+  if (ear < d) m = 3.0;
+  d = smin(d, ear, 0.5);
+
+  float eye = length(q - ec) - 1.2;
+  if (eye < d) { d = eye; m = 5.0; }
+
+  float b = sdCap(p, vec3(0.0, -7.0, -1.4), vec3(0.0, -24.0, -3.0), 5.9, 6.3);          // neck
+  b = smin(b, sdEll(p - vec3(0.0, -28.5, -3.0), vec3(21.0, 7.5, 10.5)), 4.0);           // shoulders
+  vec3 t = vec3(p.x / 1.3, p.y, (p.z + 3.0) / 0.75);
+  b = smin(b, sdCap(t, vec3(0.0, -40.0, 0.0), vec3(0.0, -150.0, 0.0), 14.5, 14.5) * 0.75, 4.0);
+  if (b < d) m = 0.0;
+  d = smin(d, b, 2.0);
+  if (uMode == 2) d = max(d, -5.5 - w.y);                                                // top view: cut away below the nose
+  return vec2(d, m);
+}
+vec3 normalAt(vec3 p) {
+  vec2 e = vec2(0.02, -0.02);
+  return normalize(e.xyy * map(p + e.xyy).x + e.yyx * map(p + e.yyx).x + e.yxy * map(p + e.yxy).x + e.xxx * map(p + e.xxx).x);
+}
+vec3 lin(vec3 c) { return pow(c, vec3(2.2)); }
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / uRes * 2.0 - 1.0;
+  vec3 ro, rd;
+  float t, tmax;
+  if (uMode == 2) {
+    ro = vec3(-uv.y * uTopR, 40.0, -uv.x * uTopR); rd = vec3(0.0, -1.0, 0.0); t = 0.0; tmax = 50.0;
+  } else {
+    ro = vec3(0.0, 0.0, EYE_Z + uDist);
+    rd = normalize(vec3(uv.x * uTan.x, uv.y * uTan.y + uShift, -1.0));
+    t = max(0.0, (uDist - 4.5) / -rd.z); tmax = (uDist + 23.0) / -rd.z;                  // the subject lies between these depths
+  }
+  float mat = -1.0;
+  float px = uMode == 2 ? 0.02 : 2.0 * uTan.y / uRes.y;                                  // size of a pixel per cm of distance
+  for (int i = 0; i < 110; i++) {
+    vec2 h = map(ro + rd * t);
+    if (h.x < clamp(0.35 * px * t, 0.003, 0.03)) { mat = h.y; break; }
+    t += h.x * 0.8;
+    if (t > tmax) break;
+  }
+  if (mat < -0.5) {
+    if (uMode == 0) {
+      vec3 bg = mix(vec3(0.17, 0.18, 0.20), vec3(0.33, 0.35, 0.38), uv.y * 0.5 + 0.5);
+      gl_FragColor = vec4(bg * (1.0 - 0.18 * dot(uv, uv)), 1.0);
+    } else gl_FragColor = vec4(0.0, 0.0, 0.0, uMode == 1 ? 1.0 : 0.0);
+    return;
+  }
+  vec3 w = ro + rd * t, p = toHead(w);
+  if (uMode == 1) {
+    float isEar = step(2.5, mat) * step(mat, 3.5);
+    float head = step(0.5, mat) * (1.0 - isEar) * step(-5.0, p.y) * step(p.y, 9.0);
+    gl_FragColor = vec4(isEar * step(p.x, 0.0), head, isEar * step(0.0, p.x), 1.0);
+    return;
+  }
+  vec3 n = normalAt(w);
+  float ao = 0.0, sca = 1.0;
+  for (int i = 1; i <= 5; i++) { float h = 0.1 + 0.42 * float(i); ao += (h - map(w + n * h).x) * sca; sca *= 0.62; }
+  ao = clamp(1.0 - 0.3 * ao, 0.0, 1.0);
+
+  vec3 skin = lin(vec3(0.82, 0.70, 0.61));
+  vec3 col = skin;
+  if (mat > 1.5 && mat < 2.5) col = mix(skin, lin(vec3(0.95, 0.56, 0.10)), 0.6 * uTint);
+  else if (mat > 2.5 && mat < 3.5) col = mix(skin, lin(vec3(0.22, 0.52, 0.86)), 0.6 * uTint);
+  else if (mat > 3.5 && mat < 4.5) col = mix(skin, lin(vec3(0.66, 0.36, 0.36)), 0.65);
+  else if (mat > 4.5) {
+    float c = normalize(vec3(abs(p.x), p.y, p.z) - vec3(3.15, 0.0, 6.9)).z;
+    col = mix(lin(vec3(0.93, 0.92, 0.90)), lin(vec3(0.30, 0.22, 0.16)), smoothstep(0.85, 0.87, c));
+    col = mix(col, vec3(0.005), smoothstep(0.972, 0.98, c));
+  } else if (mat < 0.5) col = mix(skin, lin(vec3(0.34, 0.38, 0.43)), smoothstep(-22.0, -24.5, p.y));
+
+  vec3 key = uMode == 2 ? normalize(vec3(0.15, 0.85, 0.5)) : normalize(vec3(-0.45, 0.55, 0.7));
+  float dif = max(dot(n, key), 0.0);
+  float fill = max(dot(n, normalize(vec3(0.75, 0.1, 0.55))), 0.0);
+  float sky = 0.5 + 0.5 * n.y;
+  vec3 c = col * (1.05 * dif + ao * (0.20 * fill + 0.16 * sky + 0.05));
+  c += 0.05 * pow(max(dot(reflect(-key, n), -rd), 0.0), 20.0) * ao;
+  c += 0.05 * pow(1.0 - max(dot(n, -rd), 0.0), 3.0) * ao;
+  gl_FragColor = vec4(pow(c, vec3(0.4545)), 1.0);
+}`;
+
+  const GLS = 1024;                                  // one offscreen GL canvas; every picture on the page is copied out of it
+  const glc = document.createElement("canvas");
+  glc.width = glc.height = GLS;
+  let gl = null, glOK = false, glErr = "", U = {};
+  (function initGL() {
+    try {
+      const opts = { alpha: true, premultipliedAlpha: true, antialias: false, preserveDrawingBuffer: true };
+      gl = glc.getContext("webgl", opts) || glc.getContext("experimental-webgl", opts);
+      if (!gl) { glErr = "WebGL is not available in this browser."; return; }
+      const mk = (type, src) => {
+        const s = gl.createShader(type);
+        gl.shaderSource(s, src); gl.compileShader(s);
+        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) || "shader failed to compile");
+        return s;
+      };
+      const prog = gl.createProgram();
+      gl.attachShader(prog, mk(gl.VERTEX_SHADER, "attribute vec2 a; void main() { gl_Position = vec4(a, 0.0, 1.0); }"));
+      gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, FRAG));
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || "shader failed to link");
+      gl.useProgram(prog);
+      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+      const loc = gl.getAttribLocation(prog, "a");
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      ["uRes", "uTan", "uYaw", "uShift", "uDist", "uTint", "uTopR", "uMode"].forEach(n => U[n] = gl.getUniformLocation(prog, n));
+      gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
+      glOK = true;
+    } catch (e) { glErr = "The 3D head could not be drawn: " + e.message; console.error(e); }
+  })();
+
+  // Draw into the bottom-left w × h corner of the GL canvas.
+  function shoot(w, h, u) {
+    gl.viewport(0, 0, w, h);
+    gl.uniform2f(U.uRes, w, h);
+    gl.uniform2f(U.uTan, u.tanX || 0, u.tanY || 0);
+    gl.uniform2f(U.uYaw, Math.cos(st.yaw * RAD), Math.sin(st.yaw * RAD));
+    gl.uniform1f(U.uShift, u.shift || 0);
+    gl.uniform1f(U.uDist, u.dist || 100);
+    gl.uniform1f(U.uTint, st.tint ? 1 : 0);
+    gl.uniform1f(U.uTopR, u.topR || 14);
+    gl.uniform1i(U.uMode, u.mode || 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  function photo(o, cv, w, h) {
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    shoot(w, h, { mode: 0, tanX: o.horiz / 2 / o.P, tanY: o.vert / 2 / o.P, shift: o.aim / (o.d * 100), dist: o.d * 100 });
+    cv.getContext("2d").drawImage(glc, 0, GLS - h, w, h, 0, 0, w, h);
+  }
+
+  // Measure the rendered head: pixels of each ear, and the widest row of the head, in a fixed 44 cm frame at the eyes.
+  const MS = 384, MHALF = 22;
+  const mbuf = new Uint8Array(MS * MS * 4);
+  function idPass(dcm) {
+    shoot(MS, MS, { mode: 1, tanX: MHALF / dcm, tanY: MHALF / dcm, dist: dcm });
+    gl.readPixels(0, 0, MS, MS, gl.RGBA, gl.UNSIGNED_BYTE, mbuf);
+    let a = 0, b = 0, width = 0;
+    for (let y = 0; y < MS; y++) {
+      let lo = -1, hi = -1;
+      for (let x = 0, i = y * MS * 4; x < MS; x++, i += 4) {
+        if (mbuf[i] > 127) a++;
+        if (mbuf[i + 2] > 127) b++;
+        if (mbuf[i + 1] > 127) { if (lo < 0) lo = x; hi = x; }
+      }
+      if (lo >= 0) width = Math.max(width, hi - lo + 1);
+    }
+    return { a, b, width };
+  }
+  let refKey = null, refVal = null, msKey = null, msVal = null;
+  function measure() {
+    if (!glOK) return null;
+    const dcm = st.d * 100, key = dcm.toFixed(3) + "|" + st.yaw;
+    if (key === msKey) return msVal;
+    if (refKey !== st.yaw) { refVal = idPass(5000); refKey = st.yaw; }   // the same head from 50 m: effectively no perspective
+    const now = idPass(dcm);
+    const c = Math.cos(st.yaw * RAD), s = Math.sin(st.yaw * RAD);
+    // share of each ear still showing, after allowing for it simply being drawn smaller
+    const vis = (area, ref, x) => {
+      if (ref < 12) return null;                     // that ear is out of sight in this pose from any distance
+      const z = -x * s + HEAD.earC[1] * c, scale = dcm / (dcm + HEAD.eyeZ - z);
+      return clamp(area / ref / (scale * scale), 0, 1);
+    };
+    msKey = key;
+    msVal = { visA: vis(now.a, refVal.a, -HEAD.earC[0]), visB: vis(now.b, refVal.b, HEAD.earC[0]), width: refVal.width ? now.width / refVal.width : 1 };
+    return msVal;
+  }
+
+  // The head from above, for the diagram.
+  const TOP_R = 14;
+  const topCv = document.createElement("canvas");
+  topCv.width = topCv.height = 256;
+  let topKey = null, topURL = "";
+  function topImage() {
+    if (!glOK) return "";
+    if (topKey === st.yaw) return topURL;
+    shoot(256, 256, { mode: 2, topR: TOP_R });
+    const c = topCv.getContext("2d");
+    c.clearRect(0, 0, 256, 256);
+    c.drawImage(glc, 0, GLS - 256, 256, 256, 0, 0, 256, 256);
+    topKey = st.yaw; topURL = topCv.toDataURL();
+    return topURL;
+  }
+
+  function renderView(r) {
+    const pv = $("preview");
+    pv.className = "preview " + st.orient;
+    pv.style.aspectRatio = `${r.horiz} / ${r.vert}`;
+    if (glOK) {
+      let w = st.orient === "portrait" ? 640 : 840, h = Math.round(w * r.vert / r.horiz);
+      if (h > GLS) { w = Math.round(w * GLS / h); h = GLS; }
+      photo(r, $("vf"), w, h);
+    }
+    $("pv-cap").textContent = `A mannequin head with average adult proportions: ${fmtCm(15.2)} wide and ${fmtCm(23.5)} tall, with the nose tip ${fmtCm(2.95)} in front of the eyes and the ears ${fmtCm(9.15)} behind them.`;
+  }
+
+  // ---------- lens strip ----------
+  $("strip").innerHTML = FOCALS.map(F => `<button type="button" class="thumb" data-f="${F}" aria-label="${F} millimetres"><div class="tpv"><canvas></canvas></div><div><b>${F} mm</b><span></span><span></span></div></button>`).join("");
+  const thumbs = [...$("strip").children].map(b => ({ b, f: +b.dataset.f, cv: b.querySelector("canvas"), cap: b.querySelectorAll("span") }));
+  function renderStrip(r) {
+    const keep = st.lock === "framing";
+    $("strip-title").textContent = keep ? "Same framing, different lenses" : "Same spot, different lenses";
+    const w = 260, h = Math.round(w * r.vert / r.horiz);
+    thumbs.forEach(t => {
+      const dF = clampD(keep ? r.distAt(t.f) : st.d, t.f), o = shot(t.f, dF);
+      t.b.classList.toggle("on", t.f === st.f);
+      if (glOK) photo(o, t.cv, w, h);
+      else { t.cv.width = w; t.cv.height = h; }
+      const pp = persp(dF * 100, st.yaw);
+      t.cap[0].textContent = keep ? `from ${fmtLen(dF)}` : `frame ${fmtLen(o.frameV)} tall`;
+      t.cap[1].textContent = `nose ${relTxt(pp.nose)}`;
+    });
+    $("strip-note").textContent = keep
+      ? "Each frame keeps the head the same size by moving the camera. Short lenses put you close: the nose swells, the face narrows and the ears slide out of sight. Long lenses put you far back: everything evens out and the ears come forward."
+      : "The camera stays put. A longer lens only crops tighter: the face has exactly the same shape in every frame, because the distance has not changed.";
+  }
+
+  // ---------- top view ----------
+  const G = 320, W = 1000, XL = 70, XR = 950, TOP = 44, CY = (TOP + G) / 2;
+  let frozen = null;                                  // layout held still while dragging
+  function layout() {
+    if (frozen) return frozen;
+    const RL = niceCeil(st.d * 110 + 4), RR = 24;     // cm in front of, and behind, the eye plane
+    const k = Math.min(10.5, (XR - XL) / (RL + RR));  // px per cm
+    const slack = (XR - XL) - (RL + RR) * k;
+    return { k, EX: XL + slack / 2 + RL * k };
+  }
+  function ruler(k) {
+    if (st.units === "m") {
+      const s = niceStep(90 / k);
+      return { cm: s, fmt: v => v >= 100 ? +(v / 100).toFixed(2) + " m" : +v.toFixed(1) + " cm" };
+    }
+    const need = 90 / (k * 2.54), s = [1, 2, 3, 6, 12, 24, 36, 60, 120].find(v => v >= need) || 120;
+    return { cm: s * 2.54, fmt: v => { const inch = Math.round(v / 2.54); return inch % 12 === 0 ? inch / 12 + " ft" : inch + " in"; } };
+  }
+  function camera(x) {
+    return `<g class="cam">
+      <rect x="${x - 44}" y="${CY - 40}" width="74" height="80" fill="transparent"/>
+      <rect x="${x - 28}" y="${CY - 16}" width="26" height="32" rx="4" fill="var(--ink)"/>
+      <rect x="${x - 2}" y="${CY - 10}" width="15" height="20" rx="2" fill="var(--ink)"/>
+      <circle cx="${x - 20}" cy="${CY - 9}" r="2" fill="var(--accent)"/>
+    </g>`;
+  }
+  function renderMain(r, ms) {
+    const { k, EX } = layout(), dcm = st.d * 100;
+    const camX = EX - dcm * k, AX = EX + HEAD.eyeZ * k;
+    const c = Math.cos(st.yaw * RAD), s = Math.sin(st.yaw * RAD);
+    const at = ([x, z]) => [AX - (-x * s + z * c) * k, CY + (x * c + z * s) * k];   // head space to diagram
+    const cy = v => clamp(v, TOP, G);
+    let out = `<defs><clipPath id="plot"><rect x="0" y="${TOP}" width="${W}" height="${G - TOP}"/></clipPath></defs>`;
+
+    // ruler, measured from the eyes
+    const ru = ruler(k), px = ru.cm * k;
+    for (let i = -Math.floor((W - 10 - EX) / px); i <= Math.floor((EX - 10) / px); i++) {
+      const x = EX - i * px;
+      out += `<line x1="${x}" y1="${TOP}" x2="${x}" y2="${G}" stroke="var(--grid)" stroke-width="1"/>
+        <line x1="${x}" y1="${G}" x2="${x}" y2="${G + 9}" stroke="var(--muted)" stroke-width="1"/>`;
+      if (i !== 0) out += `<text x="${x}" y="${G + 24}" text-anchor="middle" font-size="12" fill="var(--muted)" class="mono">${i < 0 ? "+" : ""}${ru.fmt(Math.round(Math.abs(i) * ru.cm * 1000) / 1000)}</text>`;
+    }
+    out += `<text x="${EX}" y="${G + 24}" text-anchor="middle" font-size="12" fill="var(--ink)" font-weight="600">Eyes</text>
+      <line x1="0" y1="${G}" x2="${W}" y2="${G}" stroke="var(--line)" stroke-width="2"/>`;
+
+    // field of view across the frame's width
+    const half = r.frameH * 50, FX = AX + 13 * k, spread = half * k * (FX - camX) / (EX - camX);
+    out += `<g clip-path="url(#plot)">
+      <path d="M${camX} ${CY} L${FX} ${CY - spread} L${FX} ${CY + spread} Z" fill="var(--cone)"/>
+      <line x1="${camX}" y1="${CY}" x2="${FX}" y2="${CY - spread}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="2 4"/>
+      <line x1="${camX}" y1="${CY}" x2="${FX}" y2="${CY + spread}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="2 4"/>
+    </g>`;
+
+    // the head from above, facing the camera
+    const img = topImage(), R = TOP_R * k;
+    out += img
+      ? `<image href="${img}" x="${AX - R}" y="${CY - R}" width="${2 * R}" height="${2 * R}"/>`
+      : `<ellipse cx="${AX + 0.5 * k}" cy="${CY}" rx="${9.7 * k}" ry="${7.6 * k}" fill="#cdb39c"/>`;
+    out += `<line x1="${EX}" y1="${TOP}" x2="${EX}" y2="${G}" stroke="var(--ink)" stroke-width="1" stroke-dasharray="1 3" opacity=".6"/>`;
+    const t = `Frame at the eyes: ${fmtLen(r.frameH)} wide`, tw = t.length * 7.2;
+    out += `<text x="${clamp(EX - tw / 2, 6, W - tw - 6)}" y="24" font-size="13" fill="var(--muted)" font-weight="600">${esc(t)}</text>`;
+
+    // lines of sight
+    const sight = (pt, color, hidden) => {
+      const [x, y] = at(pt);
+      return `<line x1="${camX}" y1="${CY}" x2="${x}" y2="${y}" stroke="${color}" stroke-width="${hidden ? 1.25 : 1.75}"${hidden ? ` stroke-dasharray="5 4" opacity=".7"` : ""}/>
+        <circle cx="${x}" cy="${y}" r="${hidden ? 3 : 4}" fill="${hidden ? "var(--panel)" : color}" stroke="${hidden ? color : "var(--panel)"}" stroke-width="1.5"/>`;
+    };
+    const gone = v => ms ? (v === null || v < 0.04) : false;
+    out += sight([-HEAD.earOut[0], HEAD.earOut[1]], "var(--ear)", gone(ms && ms.visA));
+    out += sight(HEAD.earOut, "var(--ear)", gone(ms && ms.visB));
+    out += sight(HEAD.nose, "var(--accent)", false);
+
+    out += camera(camX);
+
+    // where the other lenses would put the camera for the same framing
+    if (st.lock === "framing") {
+      let last = -99;
+      FOCALS.filter(F => F !== st.f)
+        .map(F => ({ F, x: EX - clampD(r.distAt(F), F) * 100 * k }))
+        .filter(p => p.x > 12).sort((a, b) => a.x - b.x)
+        .forEach(p => {
+          const lab = p.x - last >= 26;
+          if (lab) last = p.x;
+          out += `<g class="fmark" data-f="${p.F}"><rect x="${p.x - 10}" y="${G - 26}" width="20" height="34" fill="transparent"/>
+            <circle cx="${p.x}" cy="${G}" r="3.5" fill="var(--panel)" stroke="var(--accent)" stroke-width="1.5"/>
+            ${lab ? `<text x="${p.x}" y="${G - 9}" text-anchor="middle" font-size="11" class="mono" fill="var(--accent-ink)">${p.F}</text>` : ""}</g>`;
+        });
+    }
+
+    // camera-to-eyes dimension
+    const y = 362, label = fmtLen(st.d), lw = label.length * 8.2 + 14;
+    const cx = Math.max(Math.min((camX + EX) / 2, EX - lw / 2 - 3), lw / 2 + 2);
+    out += `<line x1="${camX}" y1="${y}" x2="${EX}" y2="${y}" stroke="var(--ink)" stroke-width="1"/>
+      <line x1="${camX}" y1="${y - 6}" x2="${camX}" y2="${y + 6}" stroke="var(--ink)"/>
+      <line x1="${EX}" y1="${y - 6}" x2="${EX}" y2="${y + 6}" stroke="var(--ink)"/>
+      <rect x="${cx - lw / 2}" y="${y - 10}" width="${lw}" height="20" rx="4" fill="var(--panel)"/>
+      <text x="${cx}" y="${y + 4.5}" text-anchor="middle" font-size="13" class="mono" fill="var(--ink)" font-weight="500">${esc(label)}</text>`;
+    svgMain.innerHTML = out;
+    $("legend-marks").innerHTML = st.lock === "framing"
+      ? `<svg viewBox="0 0 10 10" style="width:10px;height:10px"><circle cx="5" cy="5" r="3.5" fill="var(--panel)" stroke="var(--accent)" stroke-width="1.5"/></svg>Same framing with another lens (mm)`
+      : "";
+  }
+
+  // ---------- chart ----------
+  const CV = { X0: 52, X1: 540, Y0: 190, Y1: 34 };
+  const xsD = d => CV.X0 + Math.log(clamp(d, D_MIN, D_MAX) / D_MIN) / Math.log(D_MAX / D_MIN) * (CV.X1 - CV.X0);
+  let lastC = null;
+  function renderCurve(r) {
+    const { X0, X1, Y0, Y1 } = CV, turned = st.yaw !== 0;
+    const N = 100, pts = [];
+    for (let i = 0; i <= N; i++) { const d = D_MIN * Math.pow(D_MAX / D_MIN, i / N); pts.push({ d, p: persp(d * 100, st.yaw) }); }
+    const vals = pts.flatMap(q => [q.p.nose, q.p.near, q.p.far]).map(v => v * 100).concat(100);
+    const step = niceStep((Math.max(...vals) - Math.min(...vals)) / 5 || 1);
+    const yLo = Math.floor(Math.min(...vals) / step) * step, yHi = Math.ceil(Math.max(...vals) / step) * step;
+    const ys = v => Y0 - (v * 100 - yLo) / (yHi - yLo) * (Y0 - Y1);
+    let s = "";
+    for (let v = yLo; v <= yHi + 1e-9; v += step) {
+      const y = ys(v / 100), base = Math.abs(v - 100) < 1e-6;
+      s += `<line x1="${X0}" y1="${y}" x2="${X1}" y2="${y}" stroke="${base ? "var(--muted)" : "var(--grid)"}"${base ? ` stroke-dasharray="4 4"` : ""}/>
+        <text x="${X0 - 8}" y="${y + 4}" text-anchor="end" font-size="11" class="mono" fill="var(--muted)">${Math.round(v)}%</text>`;
+    }
+    const ticks = st.units === "m"
+      ? [[0.15, "15 cm"], [0.25, "25 cm"], [0.5, "50 cm"], [1, "1 m"], [2, "2 m"], [4, "4 m"], [6, "6 m"]]
+      : [[0.1524, "6 in"], [0.3048, "1 ft"], [0.6096, "2 ft"], [0.9144, "3 ft"], [1.8288, "6 ft"], [3.6576, "12 ft"], [5.4864, "18 ft"]];
+    ticks.forEach(([d, t]) => {
+      const x = xsD(d);
+      s += `<line x1="${x}" y1="${Y0}" x2="${x}" y2="${Y0 + 5}" stroke="var(--muted)"/>
+        <text x="${x}" y="${Y0 + 18}" text-anchor="middle" font-size="11" class="mono" fill="var(--muted)">${t}</text>`;
+    });
+    s += `<text x="${X1}" y="${Y0 + 34}" text-anchor="end" font-size="11" fill="var(--muted)">camera to eyes</text>`;
+    // which lens gives this framing at each distance
+    let last = -99;
+    s += `<text x="${X0}" y="${Y1 - 20}" font-size="11" fill="var(--muted)">Lens for this framing, mm</text>`;
+    FOCALS.forEach(F => {
+      const d = r.distAt(F);
+      if (d < D_MIN || d > D_MAX) return;
+      const x = xsD(d);
+      s += `<line x1="${x}" y1="${Y1 - 3}" x2="${x}" y2="${Y1 + 3}" stroke="var(--muted)"/>`;
+      if (x - last >= 24) { s += `<text x="${x}" y="${Y1 - 7}" text-anchor="middle" font-size="10" class="mono" fill="var(--muted)">${F}</text>`; last = x; }
+    });
+    const path = key => pts.map((q, i) => (i ? "L" : "M") + xsD(q.d).toFixed(1) + " " + ys(q.p[key]).toFixed(1)).join("");
+    const y100 = ys(1);
+    s += `<path d="${path("nose")} L${X1} ${y100} L${X0} ${y100} Z" fill="var(--accent)" opacity=".12"/>
+      <path d="${path("far")} L${X1} ${y100} L${X0} ${y100} Z" fill="var(--ear)" opacity=".12"/>
+      <path d="${path("nose")}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
+      <path d="${path("far")}" fill="none" stroke="var(--ear)" stroke-width="2" stroke-linejoin="round"/>`;
+    if (turned) s += `<path d="${path("near")}" fill="none" stroke="var(--ear)" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>`;
+    // direct labels where the lines are furthest apart
+    const p0 = pts[4].p, lx = xsD(pts[4].d) + 6;
+    const below = (v, o) => ys(v) + (v >= o ? -8 : 15);
+    s += `<text x="${lx}" y="${below(p0.nose, 1)}" font-size="12" font-weight="600" fill="var(--accent-ink)">Nose tip</text>
+      <text x="${lx}" y="${below(p0.far, 1)}" font-size="12" font-weight="600" fill="var(--ear-ink)">${turned ? "Far ear" : "Ears"}</text>`;
+    if (turned) s += `<text x="${lx}" y="${below(p0.near, p0.nose)}" font-size="12" font-weight="600" fill="var(--ear-ink)">Near ear</text>`;
+    // current distance
+    const cx = xsD(st.d), right = cx > X1 - 90;
+    s += `<line x1="${cx}" y1="${Y1}" x2="${cx}" y2="${Y0}" stroke="var(--ink)" stroke-width="1" opacity=".5"/>
+      <circle cx="${cx}" cy="${ys(r.p.nose)}" r="5" fill="var(--accent)" stroke="var(--panel)" stroke-width="2"/>
+      <circle cx="${cx}" cy="${ys(r.p.far)}" r="5" fill="var(--ear)" stroke="var(--panel)" stroke-width="2"/>
+      ${turned ? `<circle cx="${cx}" cy="${ys(r.p.near)}" r="5" fill="var(--panel)" stroke="var(--ear)" stroke-width="2"/>` : ""}
+      <text x="${right ? cx - 8 : cx + 8}" y="${Y0 - 8}" text-anchor="${right ? "end" : "start"}" font-size="12" font-weight="600" fill="var(--ink)">${esc(fmtLen(st.d))}</text>`;
+    s += `<line x1="${X0}" y1="${Y0}" x2="${X1}" y2="${Y0}" stroke="var(--line)"/>
+      <g id="curve-hover"></g><rect x="${X0}" y="${Y1}" width="${X1 - X0}" height="${Y0 - Y1}" fill="transparent"/>`;
+    $("curve").innerHTML = s;
+    lastC = { ys, turned };
+  }
+  function curveHover(ev) {
+    if (!lastC) return;
+    const svg = $("curve"), pt = svg.createSVGPoint();
+    pt.x = ev.clientX; pt.y = ev.clientY;
+    const x = pt.matrixTransform(svg.getScreenCTM().inverse()).x;
+    const g = $("curve-hover"); if (!g) return;
+    if (x < CV.X0 || x > CV.X1) { g.innerHTML = ""; return; }
+    const d = D_MIN * Math.pow(D_MAX / D_MIN, (x - CV.X0) / (CV.X1 - CV.X0)), p = persp(d * 100, st.yaw);
+    const lines = [`from ${fmtLen(d)}`, `nose tip ${relTxt(p.nose)}`, lastC.turned ? `ears ${relTxt(p.near)} / ${relTxt(p.far)}` : `ears ${relTxt(p.far)}`];
+    const bw = Math.max(...lines.map(t => t.length)) * 6.6 + 16, bx = x + bw + 12 > CV.X1 ? x - bw - 10 : x + 10;
+    const by = (CV.Y0 + CV.Y1) / 2 - 26;
+    g.innerHTML = `<line x1="${x}" y1="${CV.Y1}" x2="${x}" y2="${CV.Y0}" stroke="var(--muted)" stroke-width="1"/>
+      <circle cx="${x}" cy="${lastC.ys(p.nose)}" r="4" fill="var(--panel)" stroke="var(--accent)" stroke-width="2"/>
+      <circle cx="${x}" cy="${lastC.ys(p.far)}" r="4" fill="var(--panel)" stroke="var(--ear)" stroke-width="2"/>
+      <rect x="${bx}" y="${by}" width="${bw}" height="53" rx="5" fill="var(--panel)" stroke="var(--line)"/>
+      ${lines.map((t, i) => `<text x="${bx + 8}" y="${by + 15 + i * 15}" font-size="11" class="mono" fill="${i ? "var(--muted)" : "var(--ink)"}">${esc(t)}</text>`).join("")}`;
+  }
+  $("curve").addEventListener("pointermove", curveHover);
+  $("curve").addEventListener("pointerleave", () => { const g = $("curve-hover"); if (g) g.innerHTML = ""; });
+
+  // ---------- readout ----------
+  function renderReadout(r, ms) {
+    const S = r.S, p = r.p, turned = st.yaw !== 0;
+    const front = persp(st.d * 100, 0), stretch = front.nose / front.far;
+    const verdict = st.d < 0.4 ? "Selfie range: the nose balloons and the ears slip behind the cheeks."
+      : st.d < 0.8 ? "Strong perspective: a prominent nose, a narrow face and small ears."
+      : st.d < 1.5 ? "Natural perspective, about what you see across a small table."
+      : st.d < 3 ? "Classic portrait distance: features sit in familiar, slightly flattened proportion."
+      : "Flat perspective: the face reads broader and the ears stand out.";
+    $("headline").innerHTML = `Seen from the front, the nose tip is drawn <em>${((stretch - 1) * 100).toFixed(stretch < 1.1 ? 1 : 0)}% larger</em> than the ears. ${verdict}`;
+
+    const visTxt = v => v === null ? "hidden" : pctTxt(v);
+    const earsRel = turned ? `${relTxt(p.near)} / ${relTxt(p.far)}` : relTxt(p.far);
+    let showing = "n/a", width = "n/a";
+    if (ms) {
+      // list the near ear first, to match the size readout
+      const [nearV, farV] = p.earA >= p.earB ? [ms.visA, ms.visB] : [ms.visB, ms.visA];
+      showing = turned ? `${visTxt(nearV)} / ${visTxt(farV)}` : visTxt((ms.visA + ms.visB) / 2);
+      width = pctTxt(ms.width);
+    }
+    const stats = [
+      [relTxt(p.nose), "nose tip, relative to the eyes"],
+      [earsRel, turned ? "near ear / far ear, relative to the eyes" : "ears, relative to the eyes"],
+      [showing, turned ? "of the near ear / far ear showing" : "of each ear showing past the cheeks"],
+      [width, "head width, compared with a distant view"],
+    ];
+    $("stats").innerHTML = stats.map(([a, b]) => `<div class="stat"><b>${esc(a)}</b><span>${esc(b)}</span></div>`).join("");
+
+    const rows = [
+      ["grp", "Position"],
+      ["Camera to eyes", fmtLen(st.d)],
+      ["Head turn", st.yaw === 0 ? "0° (facing the camera)" : st.yaw === 90 ? "90° (profile)" : st.yaw + "°"],
+      ["Head fills this angle of view", r.headAngle.toFixed(1) + "°"],
+      ["grp", "Framing"],
+      ["Frame at the eyes (w × h)", `${fmtLen(r.frameH)} × ${fmtLen(r.frameV)}`],
+      ["Shot type", framing(r.frameV)],
+      ["Angle of view (h × v)", `${r.fovH.toFixed(1)}° × ${r.fovV.toFixed(1)}°`],
+      ["grp", "Perspective, relative to the eyes"],
+      ["Nose tip drawn", relTxt(p.nose)],
+      ...(turned ? [["Near ear drawn", relTxt(p.near)], ["Far ear drawn", relTxt(p.far)]] : [["Ears drawn", relTxt(p.far)]]),
+      [turned ? "Near ear / far ear showing" : "Ears showing", showing],
+      ["Head width vs a distant view", width],
+      ["grp", "Lens and sensor"],
+      ["Sensor", `${S.w} × ${S.h} mm`],
+      ["Crop factor", r.crop.toFixed(2) + "×"],
+      ["Full-frame equivalent", `${Math.round(st.f * r.crop)} mm`],
+    ];
+    $("rows").innerHTML = rows.map(([a, b]) => a === "grp"
+      ? `<div class="grp">${esc(b)}</div>`
+      : `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join("");
+
+    $("summary").value = [
+      "Portrait Compression Simulator",
+      `${S.name} · ${st.f} mm · ${st.orient} orientation · head turned ${st.yaw}°`,
+      "",
+      ...rows.filter(x => x[0] !== "grp").map(([a, b]) => `${(a + ":").padEnd(34)} ${b}`),
+      "",
+      "Same framing with other lenses (size relative to the eyes):",
+      ...FOCALS.map(F => {
+        const d = clampD(r.distAt(F), F), q = persp(d * 100, st.yaw);
+        return `  ${(F + " mm").padEnd(8)} from ${fmtLen(d).padEnd(12)} nose tip ${relTxt(q.nose).padEnd(7)} ears ${turned ? relTxt(q.near) + " / " + relTxt(q.far) : relTxt(q.far)}`;
+      }),
+    ].join("\n");
+  }
+
+  // ---------- controls ----------
+  const toSlider = v => Math.round(1000 * Math.log(v / D_MIN) / Math.log(D_MAX / D_MIN));
+  const fromSlider = t => D_MIN * Math.pow(D_MAX / D_MIN, t / 1000);
+  const unitM = () => st.units === "m" ? 0.01 : 0.0254;   // the distance field is in cm or inches
+  function syncDistance() {
+    const u = unitM();
+    $("dist").value = toSlider(st.d);
+    $("dist-num").value = +(st.d / u).toFixed(1);
+    $("dist-num").min = +(D_MIN / u).toFixed(1); $("dist-num").max = +(D_MAX / u).toFixed(1);
+    $("dist-unit").textContent = st.units === "m" ? "cm" : "in";
+    $("yaw").value = st.yaw; $("yaw-num").value = st.yaw;
+  }
+  function setD(m) { st.d = clampD(m, st.f); lockMag = magNow(); }
+  function setFocal(v) {
+    st.f = v;
+    if (st.lock === "framing") st.d = clampD(v * (1 + 1 / lockMag) / 1000, v);
+    else { st.d = clampD(st.d, v); lockMag = magNow(); }
+  }
+  function pickFocal(F) { setFocal(F); $("focal").value = F; chips(); syncDistance(); render(); }
+  function chips() {
+    $("focal-chips").innerHTML = FOCALS.map(f => `<button type="button" data-f="${f}" class="${f === st.f ? "on" : ""}">${f}</button>`).join("");
+  }
+  function sensorHint() {
+    const S = SENSORS[st.sensor], crop = FF_DIAG / Math.hypot(S.w, S.h);
+    $("sensor-hint").textContent = `${S.w} × ${S.h} mm · crop ${crop.toFixed(2)}×`;
+  }
+  function lockHint() {
+    $("lock-hint").textContent = st.lock === "framing"
+      ? "The camera moves so the head stays the same size. This is where the face changes shape."
+      : "The camera stays where it is, so a longer lens only crops in.";
+  }
+
+  let raf = 0;
+  function draw() {
+    raf = 0;
+    const r = compute(), ms = measure();
+    renderView(r); renderStrip(r); renderMain(r, ms); renderReadout(r, ms); renderCurve(r);
+  }
+  function render() { if (!raf) raf = requestAnimationFrame(draw); }
+  function renderAll() { chips(); sensorHint(); lockHint(); syncDistance(); render(); }
+
+  if (!glOK) { $("gl-msg").hidden = false; $("gl-msg").textContent = glErr + " The numbers and chart below still work."; }
+
+  $("sensor").innerHTML = SENSORS.map((s, i) => `<option value="${i}">${s.name}</option>`).join("");
+  $("sensor").value = st.sensor; $("focal").value = st.f; $("tint").checked = st.tint;
+  $("sensor").addEventListener("change", e => { st.sensor = +e.target.value; sensorHint(); render(); });
+  $("tint").addEventListener("change", e => { st.tint = e.target.checked; topKey = null; render(); });
+  $("focal").addEventListener("input", e => {
+    const v = parseFloat(e.target.value);
+    if (v >= 8 && v <= 800) { setFocal(v); chips(); syncDistance(); render(); }
+  });
+  $("focal-chips").addEventListener("click", e => { const b = e.target.closest("button"); if (b) pickFocal(+b.dataset.f); });
+  $("strip").addEventListener("click", e => { const b = e.target.closest("button"); if (b) pickFocal(+b.dataset.f); });
+  function seg(ids, key, vals) {
+    ids.forEach((id, i) => $(id).addEventListener("click", () => {
+      st[key] = vals[i];
+      ids.forEach((j, n) => $(j).setAttribute("aria-pressed", n === i));
+      if (key === "units") { try { localStorage.setItem("dof-units", st.units); } catch (e) {} }
+      if (key === "lock") lockMag = magNow();
+      renderAll();
+    }));
+    ids.forEach((j, n) => $(j).setAttribute("aria-pressed", st[key] === vals[n]));
+  }
+  seg(["u-m", "u-ft"], "units", ["m", "ft"]);
+  seg(["o-p", "o-l"], "orient", ["portrait", "landscape"]);
+  seg(["l-f", "l-p"], "lock", ["framing", "position"]);
+
+  $("dist").addEventListener("input", e => {
+    setD(fromSlider(+e.target.value));
+    $("dist-num").value = +(st.d / unitM()).toFixed(1);
+    render();
+  });
+  $("dist-num").addEventListener("change", e => {
+    const v = parseFloat(e.target.value);
+    if (v > 0) setD(v * unitM());
+    syncDistance(); render();
+  });
+  const setYaw = v => { if (!isNaN(v)) st.yaw = Math.round(clamp(v, 0, 90)); syncDistance(); render(); };
+  $("yaw").addEventListener("input", e => setYaw(+e.target.value));
+  $("yaw-num").addEventListener("change", e => setYaw(parseFloat(e.target.value)));
+
+  // drag the camera in the top view
+  let dragging = false;
+  function svgX(ev) {
+    const pt = svgMain.createSVGPoint();
+    pt.x = ev.clientX; pt.y = ev.clientY;
+    return pt.matrixTransform(svgMain.getScreenCTM().inverse()).x;
+  }
+  function dragTo(ev) {
+    const { k, EX } = frozen;
+    setD(+((EX - clamp(svgX(ev), 16, W)) / k / 100).toPrecision(3));
+    syncDistance(); render();
+  }
+  svgMain.addEventListener("pointerdown", ev => {
+    const mark = ev.target.closest(".fmark");
+    if (mark) { pickFocal(+mark.dataset.f); return; }
+    const L = layout();
+    if (svgX(ev) > L.EX - 10) return;
+    frozen = L; dragging = true; svgMain.classList.add("dragging");
+    svgMain.setPointerCapture(ev.pointerId);
+    dragTo(ev);
+  });
+  svgMain.addEventListener("pointermove", ev => { if (dragging) dragTo(ev); });
+  const end = () => { if (!dragging) return; dragging = false; frozen = null; svgMain.classList.remove("dragging"); render(); };
+  svgMain.addEventListener("pointerup", end);
+  svgMain.addEventListener("pointercancel", end);
+
+  $("copy").addEventListener("click", () => {
+    const ta = $("summary"), msg = $("copy-msg");
+    const fallback = () => { ta.focus(); ta.select(); msg.textContent = "Selected. Press Ctrl+C or ⌘C to copy."; };
+    try {
+      navigator.clipboard.writeText(ta.value).then(() => { msg.textContent = "Copied"; }, fallback);
+    } catch (e) { fallback(); }
+  });
+
+  renderAll();
+})();
+</script>
+</body>
+</html>
